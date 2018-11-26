@@ -1,5 +1,5 @@
 # flask-ai
-Basic structure to deploy an AI project with flask
+Basic structure to deploy a pytorch language model with flask
 
 ## Structure of Repository
 
@@ -12,3 +12,6 @@ Basic structure to deploy an AI project with flask
 * bash run.sh
 
 The script will start the flask server
+
+
+adapted from: https://github.com/pedrohbtp/pytorch-zappa-serverless
