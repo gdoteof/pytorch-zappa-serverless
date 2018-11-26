@@ -15,9 +15,8 @@ import boto3
 app = Flask(__name__)
 CORS(app)
 
-MODEL_PATH= 'models/awd_lstm/lstm_wt103.pth'
-MODEL_PATH_PICKLE= 'models/awd_lstm/lstm_wt103.pkl'
-ITOS_PATH = 'models/awd_lstm/itos_wt103.pkl'
+MODEL_PATH= 'models/rjokes/rjokes.model.pth'
+ITOS_PATH = 'models/rjokes/rjokes.itos.pkl'
 
 def pickle_obj(data, path):
     with open(path,'wb+') as f:
@@ -44,9 +43,9 @@ def sample_model(model, input_words, l=50):
     model: pytorch LM 
     s: list of strings
     '''
-    no_space_words = ["'s", "'ll", ",", "?",".", "'t", "'m", "n't", "!", "'", "'ve", ";"]
+    no_space_words = ["'s", "'ll", ",", "?",".", "'t", "'m", "n't", "!", "'", "'ve", ";", "http", ":", "/", "\\"]
     capitalize_words = ['.', '!', '\n']
-    exclude_tokens = [model.stoi[i] for i in ['"',"[", "]", "(", ")", "xxup", "xxfld", "xxrep", "xxbos"] if i in model.stoi]
+    exclude_tokens = [model.stoi[i] for i in ["xxup", "xxfld", "xxrep"] if i in model.stoi]
     bs = model[0].bs
     model[0].bs=1
     model.eval()
@@ -82,9 +81,6 @@ def sample_model(model, input_words, l=50):
     model[0].bs=bs
     return final_string
 
-def unpickle_predict():
-    model = unpickle_s3_obj(os.environ["models_bucket"], MODEL_PATH_PICKLE)
-    return {'text': sample_model(model, [''], l=50)}
 
 def load_lm_and_predict():
     ''' input_data: data to be used in the prediction
@@ -96,22 +92,19 @@ def load_lm_and_predict():
     stoi = {i[1]:i[0] for i in enumerate(itos)}
     # Generates AWD_LSTM model
     dps = np.array([0.25, 0.1, 0.2, 0.02, 0.15]) * 1.0
-    my_model = awd_lstm.get_language_model(vocab_sz=len(itos), emb_sz=400, n_hid=1150, n_layers=3, pad_token=1, input_p=dps[0],                    output_p=dps[1],weight_p=dps[2], embed_p=dps[3], hidden_p=dps[4], tie_weights=True, bias=True, qrnn=False)
+    my_model = awd_lstm.get_language_model(vocab_sz=len(itos), emb_sz=1000, n_hid=1150, n_layers=3, pad_token=1, input_p=dps[0],                    output_p=dps[1],weight_p=dps[2], embed_p=dps[3], hidden_p=dps[4], tie_weights=True, bias=True, qrnn=False)
     # load all the weights in the model
     my_model.load_state_dict(torch.load(MODEL_PATH, map_location='cpu'))
     my_model.itos = itos
     my_model.stoi = stoi
     #print(my_model)
-    return {'text': sample_model(my_model, [''], l=50)}
+    return {'text': sample_model(my_model, [''], l=200)}
 
 @app.route('/inference',methods=['GET'])
 def inference():
     ''' 
     GET: Performs inference on the language model
     '''
-    #form_data = flask.request.get_json()
-    #data = form_data['data']
-    # response = unpickle_predict()
     response = load_lm_and_predict()
     resp = Response(response=json.dumps({"response": response}), status=200, mimetype='application/json')
     return resp
