@@ -100,7 +100,6 @@ def load_lm_and_predict():
     my_model.itos = itos
     my_model.stoi = stoi
     #print(my_model)
-    pickle_obj(my_model, 'rjokes.pkl')
     return {'text': sample_model(my_model, [''], l=200)}
 
 @app.route('/inference',methods=['GET'])
