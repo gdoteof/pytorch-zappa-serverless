@@ -18,6 +18,7 @@ app = Flask(__name__)
 CORS(app)
 
 S3_MODEL_PATH= 'rjokes/rjokes.model.pth'
+S3_MODEL_PATH_PICKLE= 'rjokes/rjokes.pkl'
 S3_ITOS_PATH = 'rjokes/rjokes.itos.pkl'
 
 def pickle_obj(data, path):
@@ -27,6 +28,17 @@ def pickle_obj(data, path):
 def unpickle_obj(path):
     with open(path,'rb') as f:
         data = pickle.load(f)
+    return data
+
+def unpickle_s3_obj(bucket, path):
+    if IS_LOCAL == False:
+        s3 = boto3.resource('s3')
+        obj = s3.Object(bucket, path)
+        body_string = obj.get()['Body'].read()
+        data = pickle.loads(body_string)
+    else:
+        print('is local: ', IS_LOCAL)
+        data = unpickle_obj(path)
     return data
 
 def maybe_fetch_s3(bucket, path):
@@ -42,7 +54,7 @@ def sample_model(model, input_words, l=50):
     model: pytorch LM 
     s: list of strings
     '''
-    no_space_words = ["'s", "'ll", ",", "?",".", "'t", "'m", "n't", "!", "'", "'ve", ";", "http", ":", "/", "\\"]
+    no_space_words = ["'s", "'ll", ",", "?",".", "'t", "'m", "n't", "!", "'", "'ve", ";", "http", ":", "/", "\\", "\n"]
     capitalize_words = ['.', '!', '\n']
     exclude_tokens = [model.stoi[i] for i in ["xxup", "xxfld", "xxrep"] if i in model.stoi]
     bs = model[0].bs
@@ -76,6 +88,10 @@ def sample_model(model, input_words, l=50):
             final_string = final_string + word
         else: 
             final_string = final_string + ' ' + word
+        possible_final = extract_fc(final_string)
+        if(possible_final is not None):
+            model[0].bs=bs
+            return possible_final
         last_word = word
     model[0].bs=bs
     return final_string
@@ -102,38 +118,46 @@ def load_lm_and_predict():
     #print(my_model)
     return {'text': sample_model(my_model, [''], l=200)}
 
+def unpickle_predict():
+    model = unpickle_s3_obj(os.environ["models_bucket"], S3_MODEL_PATH_PICKLE)
+    return {'text': sample_model(model, [''], l=50)}
+
+def extract_fc(words, min_length=10):
+  buffer = []
+  last   = None
+  for w in words:
+    if w != "\n\n":
+      buffer.append(w)
+    else:
+      if  len(buffer) >= min_length:
+        return " ".join(buffer)
+      else:
+          buffer = []
+  return None
+
 @app.route('/inference',methods=['GET'])
 def inference():
     ''' 
     GET: Performs inference on the language model
     '''
-    response = load_lm_and_predict()
+    #response = load_lm_and_predict()
+    response = unpickle_predict()
     resp = Response(response=json.dumps({"response": response}), status=200, mimetype='application/json')
     return resp
 
 
 IS_LOCAL = False
 
-print("BOOTSTRAPPING")
 newpath = '/tmp/rjokes'
-print("CHECKING PATH")
 if not os.path.exists(newpath):
         print(f'Path:{newpath} does not exist, creating it')
         os.makedirs(newpath)
-print("WRITING TESTING FILE")
-with open(f'{newpath}/testing.txt', "w") as text_file:
-        text_file.write("IT WORKED")
 
 if __name__ == '__main__':
-    print("BOOTSTRAPPING")
     newpath = '/tmp/rjokes'
-    print("CHECKING PATH")
     if not os.path.exists(newpath):
             print(f'Path:{newpath} does not exist, creating it')
             os.makedirs(newpath)
-    print("WRITING TESTING FILE")
-    with open(f'{newpath}/testing.txt', "w") as text_file:
-            text_file.write("IT WORKED")
     env = 'dev'
     # Test if the values were set to know if it is running locally or on lambda
     json_data = open('zappa_settings.json')
