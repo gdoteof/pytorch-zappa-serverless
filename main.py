@@ -17,9 +17,8 @@ import os.path
 app = Flask(__name__)
 CORS(app)
 
-S3_MODEL_PATH= 'rjokes/rjokes.model.pth'
-S3_MODEL_PATH_PICKLE= 'rjokes/rjokes.pkl'
-S3_ITOS_PATH = 'rjokes/rjokes.itos.pkl'
+S3_MODEL_PATH= 'models/rjokes/rjokes.model.pth'
+S3_ITOS_PATH = 'models/rjokes/rjokes.itos.pkl'
 
 def pickle_obj(data, path):
     with open(path,'wb+') as f:
@@ -30,23 +29,12 @@ def unpickle_obj(path):
         data = pickle.load(f)
     return data
 
-def unpickle_s3_obj(bucket, path):
-    if IS_LOCAL == False:
-        s3 = boto3.resource('s3')
-        obj = s3.Object(bucket, path)
-        body_string = obj.get()['Body'].read()
-        data = pickle.loads(body_string)
-    else:
-        print('is local: ', IS_LOCAL)
-        data = unpickle_obj(path)
-    return data
-
 def maybe_fetch_s3(bucket, path):
     filename=f'/tmp/{path}'
     if not os.path.exists(filename):
         s3 = boto3.resource('s3')
-        s3.Bucket(bucket).download_file(path, filename)
-
+        obj = s3.Object(bucket, path)
+        obj.get_contents_to_filename(filename)
     return filename
     
 def sample_model(model, input_words, l=50):
@@ -54,7 +42,7 @@ def sample_model(model, input_words, l=50):
     model: pytorch LM 
     s: list of strings
     '''
-    no_space_words = ["'s", "'ll", ",", "?",".", "'t", "'m", "n't", "!", "'", "'ve", ";", "http", ":", "/", "\\", "\n"]
+    no_space_words = ["'s", "'ll", ",", "?",".", "'t", "'m", "n't", "!", "'", "'ve", ";", "http", ":", "/", "\\"]
     capitalize_words = ['.', '!', '\n']
     exclude_tokens = [model.stoi[i] for i in ["xxup", "xxfld", "xxrep"] if i in model.stoi]
     bs = model[0].bs
@@ -88,10 +76,6 @@ def sample_model(model, input_words, l=50):
             final_string = final_string + word
         else: 
             final_string = final_string + ' ' + word
-        possible_final = extract_fc(final_string)
-        if(possible_final is not None):
-            model[0].bs=bs
-            return possible_final
         last_word = word
     model[0].bs=bs
     return final_string
@@ -103,7 +87,7 @@ def load_lm_and_predict():
     '''
     MODEL_BUCKET=os.environ["models_bucket"]
     #Unpickles list representing vocabulary
-    local_itos_path = maybe_fetch_s3(MODEL_BUCKET, S3_ITOS_PATH)
+    local_itos_path = maybe_fetch_s3(MODEL_BUCKET, S3_ITOS_PATH):
     itos = unpickle_obj(local_itos_path)
     # Generates dictionary mapping token to int
     stoi = {i[1]:i[0] for i in enumerate(itos)}
@@ -111,57 +95,33 @@ def load_lm_and_predict():
     dps = np.array([0.25, 0.1, 0.2, 0.02, 0.15]) * 1.0
     my_model = awd_lstm.get_language_model(vocab_sz=len(itos), emb_sz=1000, n_hid=1150, n_layers=3, pad_token=1, input_p=dps[0],                    output_p=dps[1],weight_p=dps[2], embed_p=dps[3], hidden_p=dps[4], tie_weights=True, bias=True, qrnn=False)
     # load all the weights in the model
-    local_pth_path = maybe_fetch_s3(MODEL_BUCKET, S3_MODEL_PATH)
+    local_pth_path = maybe_fetch_s3(MODEL_BUCKET, S3_MODEL_PATH):
     my_model.load_state_dict(torch.load(local_pth_path, map_location='cpu'))
     my_model.itos = itos
     my_model.stoi = stoi
     #print(my_model)
     return {'text': sample_model(my_model, [''], l=200)}
 
-def unpickle_predict():
-    model = unpickle_s3_obj(os.environ["models_bucket"], S3_MODEL_PATH_PICKLE)
-    return {'text': sample_model(model, [''], l=50)}
-
-def extract_fc(words, min_length=10):
-  buffer = []
-  last   = None
-  for w in words:
-    if w != "\n\n":
-      buffer.append(w)
-    else:
-      if  len(buffer) >= min_length:
-        return " ".join(buffer)
-      else:
-          buffer = []
-  return None
-
 @app.route('/inference',methods=['GET'])
 def inference():
     ''' 
     GET: Performs inference on the language model
     '''
-    #response = load_lm_and_predict()
-    response = unpickle_predict()
+    response = load_lm_and_predict()
     resp = Response(response=json.dumps({"response": response}), status=200, mimetype='application/json')
     return resp
 
 
 IS_LOCAL = False
-
-newpath = '/tmp/rjokes'
-if not os.path.exists(newpath):
-        print(f'Path:{newpath} does not exist, creating it')
-        os.makedirs(newpath)
-
 if __name__ == '__main__':
-    newpath = '/tmp/rjokes'
-    if not os.path.exists(newpath):
-            print(f'Path:{newpath} does not exist, creating it')
-            os.makedirs(newpath)
+    console.log("setting env")
     env = 'dev'
     # Test if the values were set to know if it is running locally or on lambda
+    console.log("opening settings json")
     json_data = open('zappa_settings.json')
+    console.log("loading settings json")
     env_vars = json.load(json_data)
     for key, val in env_vars[env]['aws_environment_variables'].items():
         os.environ[key] = val
+    print('Set the environ')
     app.run(debug=True, host='0.0.0.0', port=8082)

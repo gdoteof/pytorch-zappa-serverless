@@ -8,21 +8,7 @@
         "runtime": "python3.6",
         "s3_bucket": "zappa-gdoteof-fcai",
         "slim_handler": "true",
-        "exclude": [
-          "models", 
-          "lc/lib/python3.6/site-packages/torch/lib/libtorch.so", 
-          "lc/lib/python3.6/site-packages/torch/lib/libcaffe2.so", 
-          "lc/lib/python3.6/site-packages/boto3", 
-          "lc/lib/python3.6/site-packages/botocore", 
-          "lc/lib/python3.6/site-packages/pip", 
-          "lc/lib/python3.6/site-packages/awscli", 
-          "lc/lib/python3.6/site-packages/caffe2",
-          "lc/lib/python3.6/site-packages/lambda_packages/OpenCV",
-          "lc/lib/python3.6/site-packages/lambda_packages/mysqlclient",
-          "lc/lib/python3.6/site-packages/lambda_packages/MySQL-Python",
-          "lc/lib/python3.6/site-packages/lambda_packages/dlib",
-          "lc/lib/python3.6/site-packages/lambda_packages/OpenCV" 
-        ],
+        "exclude": ["models"],
         "aws_environment_variables": {
             "models_bucket": "geoffgolder-ai-nlpmodels" 
         }
