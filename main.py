@@ -13,21 +13,13 @@ import torch
 import boto3
 import os.path
 
+from io import BytesIO
+import urllib.request
+
+from fastai.vision import *
 
 app = Flask(__name__)
 CORS(app)
-
-S3_MODEL_PATH= 'models/rjokes/rjokes.model.pth'
-S3_ITOS_PATH = 'models/rjokes/rjokes.itos.pkl'
-
-def pickle_obj(data, path):
-    with open(path,'wb+') as f:
-        pickle.dump(data,f)
-
-def unpickle_obj(path):
-    with open(path,'rb') as f:
-        data = pickle.load(f)
-    return data
 
 def maybe_fetch_s3(bucket, path):
     filename=f'/tmp/{path}'
@@ -81,45 +73,41 @@ def sample_model(model, input_words, l=50):
     return final_string
 
 
-def load_lm_and_predict():
+def load_lm_and_predict(url):
     ''' input_data: data to be used in the prediction
     model_path: path to the 
     '''
     MODEL_BUCKET=os.environ["models_bucket"]
-    #Unpickles list representing vocabulary
-    local_itos_path = maybe_fetch_s3(MODEL_BUCKET, S3_ITOS_PATH):
-    itos = unpickle_obj(local_itos_path)
-    # Generates dictionary mapping token to int
-    stoi = {i[1]:i[0] for i in enumerate(itos)}
-    # Generates AWD_LSTM model
-    dps = np.array([0.25, 0.1, 0.2, 0.02, 0.15]) * 1.0
-    my_model = awd_lstm.get_language_model(vocab_sz=len(itos), emb_sz=1000, n_hid=1150, n_layers=3, pad_token=1, input_p=dps[0],                    output_p=dps[1],weight_p=dps[2], embed_p=dps[3], hidden_p=dps[4], tie_weights=True, bias=True, qrnn=False)
-    # load all the weights in the model
-    local_pth_path = maybe_fetch_s3(MODEL_BUCKET, S3_MODEL_PATH):
-    my_model.load_state_dict(torch.load(local_pth_path, map_location='cpu'))
-    my_model.itos = itos
-    my_model.stoi = stoi
-    #print(my_model)
-    return {'text': sample_model(my_model, [''], l=200)}
+    request = urllib.request.Request(url)
+    response = urllib.request.urlopen(request)
+    bytes = response.read()
 
-@app.route('/inference',methods=['GET'])
+    img = open_image(BytesIO(bytes))
+    learner = load_learner(Path("."))
+    _,_,losses = learner.predict(img)
+    return {
+        "predictions": sorted(
+            zip(learner.data.classes, map(float, losses)),
+            key=lambda p: p[1],
+            reverse=True
+
+        )}
+
+@app.route('/which-mouse',methods=['GET'])
 def inference():
     ''' 
     GET: Performs inference on the language model
     '''
-    response = load_lm_and_predict()
+    response = load_lm_and_predict('https://upload.wikimedia.org/wikipedia/en/d/d4/Mickey_Mouse.png')
     resp = Response(response=json.dumps({"response": response}), status=200, mimetype='application/json')
     return resp
 
 
 IS_LOCAL = False
 if __name__ == '__main__':
-    console.log("setting env")
     env = 'dev'
     # Test if the values were set to know if it is running locally or on lambda
-    console.log("opening settings json")
     json_data = open('zappa_settings.json')
-    console.log("loading settings json")
     env_vars = json.load(json_data)
     for key, val in env_vars[env]['aws_environment_variables'].items():
         os.environ[key] = val

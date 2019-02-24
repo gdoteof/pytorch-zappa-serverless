@@ -35,5 +35,5 @@ urllib3==1.24.1
 Werkzeug==0.14.1
 wsgi-request-logger==0.4.6
 zappa==0.47.0
--f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
-torch-nightly==1.0.0.dev20181105
+fastai==1.0.45
+torch==1.0.1.post2
